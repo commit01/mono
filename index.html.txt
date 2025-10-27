@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mini Monopoly Dice — لعبة النرد</title>
+<style>
+  /* تصميم يغطي كامل الصفحة */
+  :root{--bg1:#07121a;--bg2:#062a21;--accent:#d4af37;--glass:rgba(255,255,255,0.03)}
+  html,body{height:100%;margin:0;font-family:Inter, system-ui, Arial; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
+  body{background:linear-gradient(180deg,var(--bg1),#021f1b);display:flex;align-items:center;justify-content:center;color:#e8fbf4}
+  /* لوحة اللعبة مركزية، تغطي الصفحة بالكامل */
+  #game-wrap{position:relative;width:100%;height:100vh;display:grid;grid-template-columns:1fr 420px;gap:22px;padding:34px;box-sizing:border-box;align-items:stretch}
+  /* على الشاشات الصغيرة تصبح عمودية */
+  @media (max-width:980px){#game-wrap{grid-template-columns:1fr;grid-auto-rows:1fr 240px;padding:18px;}}
+  /* مسرح 3D يغطي المساحة الكبيرة */
+  .stage{border-radius:18px;background:linear-gradient(180deg,#093226,#05221a);box-shadow:0 30px 80px rgba(0,0,0,0.6);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:520px}
+  #canvas-wrap{position:relative;width:100%;height:100%}
+  canvas{display:block;width:100%;height:100%}
+  /* اللوحة الجانبية (التحكم) */
+  .panel{width:100%;max-width:420px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(0,0,0,0.04));border-radius:16px;padding:22px;box-sizing:border-box;align-self:start;backdrop-filter: blur(6px)}
+  .brand{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+  .logo-star{background:linear-gradient(90deg,#10b981,#06b6d4);padding:8px 12px;border-radius:8px;font-weight:800;color:#042;box-shadow:0 8px 30px rgba(16,185,129,0.10)}
+  h1{margin:0;font-size:20px}
+  .desc{opacity:0.85;margin-top:6px;color:#dffcf5}
+  .controls{display:flex;flex-direction:column;gap:12px;margin-top:18px}
+  .btn{background:linear-gradient(180deg,var(--accent),#f0c36a);border:none;padding:14px 18px;border-radius:12px;font-weight:800;cursor:pointer;box-shadow:0 12px 40px rgba(0,0,0,0.45);color:#06120a;letter-spacing:0.6px;font-size:15px}
+  .btn:active{transform:translateY(1px)}
+  .result{background:var(--glass);padding:12px;border-radius:10px;font-weight:700;min-height:64px;display:flex;align-items:center;justify-content:center;color:#eafbf8}
+  .small{font-size:13px;opacity:0.78}
+  footer.credit{position:absolute;left:22px;bottom:18px;color:rgba(255,255,255,0.45);font-size:13px}
+  /* ديكور طفيف على المسرح */
+  .table-label{position:absolute;top:22px;right:32px;background:linear-gradient(180deg,rgba(0,0,0,0.25),rgba(255,255,255,0.02));padding:8px 12px;border-radius:12px;color:#dffcf5;font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,0.45)}
+</style>
+</head>
+<body>
+  <div id="game-wrap">
+    <div class="stage" aria-hidden="false">
+      <div id="canvas-wrap">
+        <canvas id="c"></canvas>
+        <div class="table-label">Star Board — طاولة النرد</div>
+        <footer class="credit">نسخة احترافية — تصميم مونوبولي مبسّط</footer>
+      </div>
+    </div>
+
+    <div class="panel" aria-hidden="false">
+      <div class="brand">
+        <div class="logo-star">STAR</div>
+        <div>
+          <h1>Mini Monopoly Dice</h1>
+          <div class="desc small">اضغط على «ابدأ» لرمي النرد — تصميم 3D احترافي، يعمل على الحاسوب والموبايل.</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="startBtn" class="btn">ابدأ / رمي النرد 🎲</button>
+        <div id="result" class="result">اضغط زر البدء لرمي النرد...</div>
+        <div class="small" style="opacity:0.75">يمكنك أيضاً الضغط على مفتاح المسافة (Space) للرمي.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- تحميل مكتبات (نسخة UMD عبر CDN) - تعمل في معظم منصات المدونات -->
+  <script src="https://unpkg.com/three@0.153.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.153.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.11.5/dist/gsap.min.js"></script>
+
+  <script>
+  /**
+   * نسخة احترافية: WebGL + THREE.js (UMD) + GSAP (global)
+   * إذا مدونتك تمنع تحميل السكربتات الخارجية، أخبرني لأعطيك نسخة مضمّنة بالكامل.
+   */
+
+  (function(){
+    // عناصر DOM
+    const canvas = document.getElementById('c');
+    const startBtn = document.getElementById('startBtn');
+    const resultEl = document.getElementById('result');
+
+    // Three.js renderer & scene
+    const scene = new THREE.Scene();
+    const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias:true, alpha:true});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.shadowMap.enabled = true;
+
+    const camera = new THREE.PerspectiveCamera(40,1,0.1,100);
+    camera.position.set(3.6,3.6,3.6);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.minDistance = 3; controls.maxDistance = 10;
+
+    // إضاءة
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.75);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.0);
+    dir.position.set(5,10,7); dir.castShadow = true; dir.shadow.radius = 6;
+    scene.add(dir);
+
+    // أرضية طاولة مميزة
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(8, 64),
+      new THREE.MeshStandardMaterial({color:0x063025, roughness:0.8, metalness:0.04})
+    );
+    ground.rotation.x = -Math.PI/2; ground.position.y = -0.55;
+    scene.add(ground);
+
+    // حلقة فاخرة حول منطقة الرمي
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(2.8, 3.6, 64),
+      new THREE.MeshStandardMaterial({color:0x083a2a, side:THREE.DoubleSide})
+    );
+    ring.rotation.x = -Math.PI/2; ring.position.y = -0.545; scene.add(ring);
+
+    // ظل دائري خفيف
+    const shadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.2,3.2),
+      new THREE.MeshBasicMaterial({color:0x000000, opacity:0.12, transparent:true})
+    );
+    shadow.rotation.x = -Math.PI/2; shadow.position.y = 0.01; scene.add(shadow);
+
+    // تابع لإنشاءTexture للنرد عبر canvas (مظهر أبيض بنقاط ذهبية داخل إطار)
+    function makeDotTexture(n){
+      const size = 512;
+      const c = document.createElement('canvas'); c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      // خلفية بيضاء
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,size,size);
+      // إطار ذهبي أنيق
+      ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 22; ctx.strokeRect(12,12,size-24,size-24);
+      // نقاط
+      ctx.fillStyle = '#0b1720';
+      const r = 28;
+      const positions = {
+        1:[[0.5,0.5]],
+        2:[[0.25,0.25],[0.75,0.75]],
+        3:[[0.2,0.2],[0.5,0.5],[0.8,0.8]],
+        4:[[0.25,0.25],[0.25,0.75],[0.75,0.25],[0.75,0.75]],
+        5:[[0.25,0.25],[0.25,0.75],[0.75,0.25],[0.75,0.75],[0.5,0.5]],
+        6:[[0.23,0.18],[0.23,0.5],[0.23,0.82],[0.77,0.18],[0.77,0.5],[0.77,0.82]]
+      };
+      (positions[n]||positions[1]).forEach(p=>{ ctx.beginPath(); ctx.arc(p[0]*size, p[1]*size, r, 0, Math.PI*2); ctx.fill(); });
+      const tex = new THREE.CanvasTexture(c);
+      tex.encoding = THREE.sRGBEncoding;
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    // إنشاء مكعب النرد بمواد لكل وجه
+    const geom = new THREE.BoxGeometry(1,1,1);
+    const mats = [
+      new THREE.MeshStandardMaterial({map: makeDotTexture(3)}), // +X
+      new THREE.MeshStandardMaterial({map: makeDotTexture(4)}), // -X
+      new THREE.MeshStandardMaterial({map: makeDotTexture(2)}), // +Y (top)
+      new THREE.MeshStandardMaterial({map: makeDotTexture(5)}), // -Y (bottom)
+      new THREE.MeshStandardMaterial({map: makeDotTexture(1)}), // +Z
+      new THREE.MeshStandardMaterial({map: makeDotTexture(6)})  // -Z
+    ];
+    const dice = new THREE.Mesh(geom, mats);
+    dice.castShadow = true; dice.receiveShadow = true;
+    dice.position.y = 0.5;
+    dice.rotation.set(0.2, 0.8, 0.1);
+    scene.add(dice);
+
+    // خرائط الوجوه والمجسم لتحديد الوجه العلوي
+    const faceNormals = [ new THREE.Vector3(1,0,0), new THREE.Vector3(-1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,-1,0), new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,-1) ];
+    const faceToNumber = [3,4,2,5,1,6]; // تتبع المواد التي وضعناها
+
+    function getTopNumber(){
+      let best = -1; let bestDot = -Infinity;
+      const up = new THREE.Vector3(0,1,0);
+      for(let i=0;i<faceNormals.length;i++){
+        const n = faceNormals[i].clone().applyQuaternion(dice.quaternion);
+        const d = n.dot(up);
+        if(d > bestDot){ bestDot = d; best = i; }
+      }
+      return faceToNumber[best];
+    }
+
+    // Canonical eulers للتثبيت النهائي (snap)
+    const faceEulers = [
+      new THREE.Euler(0, -Math.PI/2, 0), // +X -> 3
+      new THREE.Euler(0, Math.PI/2, 0),  // -X -> 4
+      new THREE.Euler(-Math.PI/2, 0, 0), // +Y -> 2
+      new THREE.Euler(Math.PI/2, 0, 0),  // -Y -> 5
+      new THREE.Euler(0, 0, 0),          // +Z -> 1
+      new THREE.Euler(0, Math.PI, 0)     // -Z -> 6
+    ];
+
+    // إعداد الحجم والـresize
+    function resize(){
+      const wrap = document.getElementById('canvas-wrap');
+      const w = Math.max(320, wrap.clientWidth);
+      const h = Math.max(320, wrap.clientHeight);
+      renderer.setSize(w,h);
+      camera.aspect = w/h; camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // أصوات: نستخدم WebAudio لصنع صوت رمي قصير (لا ملفات خارجية)
+    const audioCtx = (window.AudioContext || window.webkitAudioContext) ? new (window.AudioContext || window.webkitAudioContext)() : null;
+    function playRollSound(){
+      if(!audioCtx) return;
+      const now = audioCtx.currentTime;
+      // noise burst
+      const bufferSize = audioCtx.sampleRate * 0.15;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for(let i=0;i<bufferSize;i++){
+        // شكل مختلط للـ noise مشوش ثم انخفاض gain
+        data[i] = (Math.random()*2-1) * Math.exp(-3 * i / bufferSize);
+      }
+      const src = audioCtx.createBufferSource();
+      src.buffer = buffer;
+      const low = audioCtx.createBiquadFilter(); low.type = 'lowpass'; low.frequency.value = 1200;
+      const gain = audioCtx.createGain(); gain.gain.value = 0.6;
+      src.connect(low); low.connect(gain); gain.connect(audioCtx.destination);
+      src.start(now);
+      // رنين خفيف (tone)
+      const osc = audioCtx.createOscillator();
+      const g2 = audioCtx.createGain(); g2.gain.value = 0.12;
+      osc.type = 'sawtooth'; osc.frequency.setValueAtTime(420, now); osc.frequency.exponentialRampToValueAtTime(220, now+0.12);
+      osc.connect(g2); g2.connect(audioCtx.destination);
+      osc.start(now); osc.stop(now+0.12);
+    }
+
+    // رسائل الحظ
+    function getLuckMessage(n){
+      const msgs = {
+        6: 'الحظ معك اليوم — يوم ممتاز! 🎉',
+        5: 'حظ طيب — فرصة جيدة! ✨',
+        4: 'حظ متوسط — ربما خطوة للأمام.',
+        3: 'حظ متقلب — كن حذرًا قليلاً.',
+        2: 'حظ منخفض — حاول مرة أخرى!',
+        1: 'اليوم يحتاج صبراً — لا تيأس 😅'
+      };
+      return msgs[n] || 'حظ سعيد!';
+    }
+
+    // المنطق الأساسي للرمي
+    let rolling = false;
+    function rollDice(){
+      if(rolling) return;
+      rolling = true;
+      startBtn.disabled = true;
+      resultEl.textContent = 'جارٍ الرمي...';
+      // تشغيل الصوت
+      playRollSound();
+
+      // نحدد دورات عشوائية على مضاعفات PI/2 (حتى تنتهي على أحد أوجه المكعب)
+      const spins = 2 + Math.floor(Math.random()*4); // 2..5
+      const tx = (Math.PI/2) * (Math.floor(Math.random()*4) + spins*4);
+      const ty = (Math.PI/2) * (Math.floor(Math.random()*4) + spins*4);
+      const tz = (Math.PI/2) * (Math.floor(Math.random()*4) + spins*4);
+
+      gsap.to(dice.rotation, {
+        x: tx, y: ty, z: tz,
+        duration: 1.25,
+        ease: 'power3.out',
+        onUpdate: function(){
+          // ظل متغير بسيط
+          shadow.scale.set(1 + Math.abs(Math.sin(dice.rotation.x)) * 0.12, 1, 1);
+        },
+        onComplete: function(){
+          // عثر على الوجه العلوي ثم قم بالـ snap لوضعية دقيقة
+          const num = getTopNumber();
+          const idx = faceToNumber.indexOf(num);
+          const targetEuler = faceEulers[idx] || new THREE.Euler(0,0,0);
+          const extra = (Math.random()-0.5) * 0.45;
+          const final = { x: targetEuler.x, y: targetEuler.y + extra, z: targetEuler.z };
+          gsap.to(dice.rotation, {
+            x: final.x, y: final.y, z: final.z,
+            duration: 0.38, ease: 'power2.out',
+            onComplete: function(){
+              const finalNum = getTopNumber();
+              resultEl.textContent = حصلت على ${finalNum} — ${getLuckMessage(finalNum)};
+              rolling = false;
+              startBtn.disabled = false;
+            }
+          });
+        }
+      });
+    }
+
+    startBtn.addEventListener('click', function(){
+      // في بعض المتصفحات تحتاج تفعيل صوت AudioContext عبر تفاعل المستخدم
+      if(audioCtx && audioCtx.state === 'suspended'){ audioCtx.resume(); }
+      rollDice();
+    });
+
+    // دعم مفتاح المسافة
+    window.addEventListener('keydown', function(e){
+      if(e.code === 'Space'){ e.preventDefault(); startBtn.click(); }
+    });
+
+    // حلقة الرسم
+    function animate(){
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // تحسين التّأطير بحسب العرض (desktop vs mobile)
+    function frameForSize(){
+      const wrap = document.getElementById('canvas-wrap');
+      if(!wrap) return;
+      const w = wrap.clientWidth;
+      if(w > 900){ camera.position.set(4.2,4.2,4.2); } else { camera.position.set(3.2,3.2,3.2); }
+      camera.lookAt(0,0.35,0);
+    }
+    window.addEventListener('resize', function(){ resize(); frameForSize(); });
+    frameForSize();
+
+    // فحص WebGL
+    if(!renderer.getContext()){
+      resultEl.textContent = 'هذا المتصفح لا يدعم WebGL. جرّب متصفح حديث مثل Chrome أو Firefox.';
+    }
+
+  })();
+  </script>
+</body>
+</html>
